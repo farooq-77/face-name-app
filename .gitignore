@@ -1,0 +1,38 @@
+# Flutter
+.dart_tool/
+.packages
+.pub/
+build/
+coverage/
+.flutter-plugins
+.flutter-plugins-dependencies
+flutter_app/android/.gradle/
+flutter_app/android/local.properties
+flutter_app/ios/Pods/
+flutter_app/ios/.symlinks/
+flutter_app/ios/Flutter/ephemeral/
+
+# Firebase native configuration
+flutter_app/android/app/google-services.json
+flutter_app/ios/Runner/GoogleService-Info.plist
+
+# Backend
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+backend/.env
+backend/serviceAccountKey.json
+
+# Secrets / signing
+.env
+.env.*
+!.env.example
+*.jks
+*.keystore
+key.properties
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
