@@ -12,7 +12,6 @@ class AppFirebaseOptions {
         appId: AppConfig.firebaseIosAppId,
         messagingSenderId: AppConfig.firebaseMessagingSenderId,
         projectId: AppConfig.firebaseProjectId,
-        storageBucket: AppConfig.firebaseStorageBucket,
         iosBundleId: AppConfig.firebaseIosBundleId,
       );
     }
@@ -22,7 +21,6 @@ class AppFirebaseOptions {
       appId: AppConfig.firebaseAndroidAppId,
       messagingSenderId: AppConfig.firebaseMessagingSenderId,
       projectId: AppConfig.firebaseProjectId,
-      storageBucket: AppConfig.firebaseStorageBucket,
     );
   }
 }

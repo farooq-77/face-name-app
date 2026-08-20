@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../../models/recognition_result.dart';
 import '../../services/api_service.dart';
-import '../../services/storage_service.dart';
 
 class MyFacesScreen extends StatefulWidget {
   const MyFacesScreen({super.key});
@@ -13,7 +12,6 @@ class MyFacesScreen extends StatefulWidget {
 
 class _MyFacesScreenState extends State<MyFacesScreen> {
   final _api = ApiService();
-  final _storage = StorageService();
   late Future<List<SavedFace>> _faces;
 
   @override
@@ -53,9 +51,6 @@ class _MyFacesScreenState extends State<MyFacesScreen> {
 
     try {
       await _api.deleteFace(face.id);
-      if (face.imagePath != null && face.imagePath!.isNotEmpty) {
-        await _storage.deletePath(face.imagePath!);
-      }
       setState(() => _faces = _api.listFaces());
     } on ApiException catch (e) {
       if (!mounted) return;

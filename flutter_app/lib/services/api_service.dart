@@ -56,13 +56,15 @@ class ApiService {
     required File image,
     required int faceIndex,
     required String name,
-    required String imagePath,
+    String? imagePath,
   }) async {
     final request = http.MultipartRequest('POST', _uri('/v1/faces'));
     request.headers['Authorization'] = 'Bearer ${await _idToken()}';
     request.fields['name'] = name.trim();
     request.fields['face_index'] = '$faceIndex';
-    request.fields['image_path'] = imagePath;
+    if (imagePath != null && imagePath.trim().isNotEmpty) {
+      request.fields['image_path'] = imagePath.trim();
+    }
     request.files.add(await http.MultipartFile.fromPath('image', image.path));
 
     final response = await http.Response.fromStream(await request.send());

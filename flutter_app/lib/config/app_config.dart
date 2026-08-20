@@ -14,8 +14,6 @@ class AppConfig {
     'FIREBASE_MESSAGING_SENDER_ID',
     defaultValue: '',
   );
-  static const firebaseStorageBucket =
-      String.fromEnvironment('FIREBASE_STORAGE_BUCKET', defaultValue: '');
   static const firebaseAndroidAppId =
       String.fromEnvironment('FIREBASE_ANDROID_APP_ID', defaultValue: '');
   static const firebaseIosAppId =
@@ -35,7 +33,6 @@ class AppConfig {
     return firebaseApiKey.isNotEmpty &&
         firebaseProjectId.isNotEmpty &&
         firebaseMessagingSenderId.isNotEmpty &&
-        firebaseStorageBucket.isNotEmpty &&
         appId.isNotEmpty;
   }
 

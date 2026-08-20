@@ -8,7 +8,6 @@ import '../../config/app_config.dart';
 import '../../models/recognition_result.dart';
 import '../../services/api_service.dart';
 import '../../services/auth_service.dart';
-import '../../services/storage_service.dart';
 import '../faces/my_faces_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -21,7 +20,6 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   final _picker = ImagePicker();
   final _api = ApiService();
-  final _storage = StorageService();
   final _auth = AuthService();
 
   bool _busy = false;
@@ -92,8 +90,6 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     final mutable = List<RecognizedFace>.from(result.faces);
-    String? uploadedPath;
-
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -107,12 +103,10 @@ class _HomeScreenState extends State<HomeScreen> {
               if (name == null || name.trim().isEmpty) return;
 
               try {
-                uploadedPath ??= await _storage.uploadEnrollmentImage(file);
                 final saved = await _api.enroll(
                   image: file,
                   faceIndex: face.index,
                   name: name,
-                  imagePath: uploadedPath!,
                 );
                 setSheetState(() {
                   mutable[listIndex] = face.tagged(saved.name, saved.id);
