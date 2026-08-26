@@ -82,43 +82,29 @@ PY
 fi
 
 # Apply the approved Face Name symbol-only launcher icon after Flutter regenerates
-# the native Android scaffold. Strip embedded ICC/text metadata first because AAPT2
-# can reject otherwise-valid PNGs with unsupported ancillary color-profile chunks.
+# the native Android scaffold. Android expects density-specific PNGs; fully
+# re-encoding the source also removes ancillary/profile data that AAPT2 may reject.
 ICON_SOURCE="assets/face_name_launcher.png"
 if [ -f "$ICON_SOURCE" ]; then
-  SANITIZED_ICON="$TMP_DIR/face_name_launcher_android.png"
-  python3 - "$ICON_SOURCE" "$SANITIZED_ICON" <<'PY'
-from pathlib import Path
-import struct
-import sys
+  if ! command -v convert >/dev/null 2>&1; then
+    echo "ImageMagick 'convert' is required to generate Android launcher icons." >&2
+    exit 1
+  fi
 
-src = Path(sys.argv[1]).read_bytes()
-if src[:8] != b"\x89PNG\r\n\x1a\n":
-    raise SystemExit("Launcher asset is not a PNG")
-
-# Keep only chunks needed to decode/render the PNG plus transparency and physical
-# pixel information. This preserves the exact artwork while removing ICC/text
-# metadata that Android resource compilation does not need.
-keep = {b"IHDR", b"PLTE", b"IDAT", b"IEND", b"tRNS", b"pHYs"}
-out = bytearray(src[:8])
-pos = 8
-while pos + 12 <= len(src):
-    length = struct.unpack(">I", src[pos:pos + 4])[0]
-    end = pos + 12 + length
-    if end > len(src):
-        raise SystemExit("Malformed launcher PNG")
-    chunk_type = src[pos + 4:pos + 8]
-    if chunk_type in keep:
-        out.extend(src[pos:end])
-    pos = end
-    if chunk_type == b"IEND":
-        break
-Path(sys.argv[2]).write_bytes(out)
-PY
-
-  for density in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
-    cp "$SANITIZED_ICON" "android/app/src/main/res/mipmap-$density/ic_launcher.png"
-  done
+  while read -r density size; do
+    convert "$ICON_SOURCE" \
+      -auto-orient \
+      -resize "${size}x${size}!" \
+      -strip \
+      -define png:color-type=6 \
+      "android/app/src/main/res/mipmap-$density/ic_launcher.png"
+  done <<'SIZES'
+mdpi 48
+hdpi 72
+xhdpi 96
+xxhdpi 144
+xxxhdpi 192
+SIZES
 fi
 
 flutter pub get
