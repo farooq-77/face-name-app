@@ -155,13 +155,21 @@ class FaceService:
 
     @staticmethod
     def _similarity(distance: float) -> float:
-        # face_recognition distances are not percentages. This maps the useful
-        # matching range to a stable 0..1 score without changing match logic.
+        # face_recognition distance is not a percentage. Keep the actual match
+        # decision based on face_match_tolerance, and expose a calibrated UI
+        # confidence where a just-accepted match starts at 90% and stronger
+        # matches scale smoothly to 100%.
+        tolerance = max(0.000001, settings.face_match_tolerance)
         if distance <= 0.0:
             return 1.0
+        if distance <= tolerance:
+            return max(0.90, min(1.0, 1.0 - (distance / tolerance) * 0.10))
+
+        # This branch is currently not surfaced for unmatched faces, but keeps
+        # the helper well-defined for callers and diagnostics.
         if distance >= 1.0:
             return 0.0
-        return max(0.0, min(1.0, 1.0 - distance))
+        return max(0.0, min(0.89999, 0.90 * (1.0 - distance) / (1.0 - tolerance)))
 
     @staticmethod
     def _flatten_known(
