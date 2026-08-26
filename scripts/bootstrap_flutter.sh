@@ -27,6 +27,18 @@ cp "$TMP_DIR/pubspec.yaml" ./pubspec.yaml
 cp "$TMP_DIR/analysis_options.yaml" ./analysis_options.yaml
 if [ -d "$TMP_DIR/test" ]; then cp -R "$TMP_DIR/test" ./test; fi
 
+# Keep the existing project/package identity, but use the product name users see.
+ANDROID_MANIFEST="android/app/src/main/AndroidManifest.xml"
+if [ -f "$ANDROID_MANIFEST" ]; then
+  python3 - <<'PY'
+from pathlib import Path
+p = Path("android/app/src/main/AndroidManifest.xml")
+s = p.read_text()
+s = s.replace('android:label="face_name_app"', 'android:label="Face Name"')
+p.write_text(s)
+PY
+fi
+
 if [ -f android/app/build.gradle.kts ]; then
   python3 - <<'PY'
 from pathlib import Path
@@ -56,6 +68,7 @@ if [ -f "$PLIST" ]; then
 from pathlib import Path
 p = Path("ios/Runner/Info.plist")
 s = p.read_text()
+s = s.replace("<string>face_name_app</string>", "<string>Face Name</string>")
 items = """
 \t<key>NSCameraUsageDescription</key>
 \t<string>Face Name uses the camera so you can capture a photo for face recognition.</string>
