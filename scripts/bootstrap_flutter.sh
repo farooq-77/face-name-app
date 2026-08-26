@@ -86,13 +86,17 @@ fi
 # re-encoding the source also removes ancillary/profile data that AAPT2 may reject.
 ICON_SOURCE="assets/face_name_launcher.png"
 if [ -f "$ICON_SOURCE" ]; then
-  if ! command -v convert >/dev/null 2>&1; then
-    echo "ImageMagick 'convert' is required to generate Android launcher icons." >&2
+  if command -v magick >/dev/null 2>&1; then
+    IMAGE_MAGICK=(magick)
+  elif command -v convert >/dev/null 2>&1; then
+    IMAGE_MAGICK=(convert)
+  else
+    echo "ImageMagick is required to generate Android launcher icons." >&2
     exit 1
   fi
 
   while read -r density size; do
-    convert "$ICON_SOURCE" \
+    "${IMAGE_MAGICK[@]}" "$ICON_SOURCE" \
       -auto-orient \
       -resize "${size}x${size}!" \
       -strip \
