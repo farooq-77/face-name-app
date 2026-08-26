@@ -81,6 +81,15 @@ p.write_text(s)
 PY
 fi
 
+# Apply the approved Face Name symbol-only launcher icon after Flutter regenerates
+# the native Android scaffold. Android scales the square source per density.
+ICON_SOURCE="assets/face_name_launcher.png"
+if [ -f "$ICON_SOURCE" ]; then
+  for density in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
+    cp "$ICON_SOURCE" "android/app/src/main/res/mipmap-$density/ic_launcher.png"
+  done
+fi
+
 flutter pub get
 
 echo "Flutter native Android/iOS scaffold generated."
