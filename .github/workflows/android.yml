@@ -32,9 +32,11 @@ jobs:
         working-directory: flutter_app
         run: |
           python3 - <<'PY'
-          from PIL import Image
+          from PIL import Image, ImageFile
+          ImageFile.LOAD_TRUNCATED_IMAGES = True
           path = "assets/face_name_launcher.png"
           with Image.open(path) as image:
+              image.load()
               image.convert("RGBA").save(path, format="PNG", optimize=True)
           PY
 
