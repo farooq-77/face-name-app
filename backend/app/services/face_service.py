@@ -19,7 +19,7 @@ from app.core.settings import settings
 class KnownFace:
     face_id: str
     name: str
-    embedding: np.ndarray
+    embeddings: tuple[np.ndarray, ...]
     image_path: str | None
 
 
@@ -32,6 +32,15 @@ class FaceService:
     def invalidate(self, uid: str) -> None:
         with self._lock:
             self._cache.pop(uid, None)
+
+    @staticmethod
+    def _valid_embedding(value: object) -> np.ndarray | None:
+        if not isinstance(value, list) or len(value) != 128:
+            return None
+        try:
+            return np.asarray(value, dtype=np.float64)
+        except (TypeError, ValueError):
+            return None
 
     def _known_faces(self, uid: str) -> list[KnownFace]:
         now = time.monotonic()
@@ -47,14 +56,27 @@ class FaceService:
         faces: list[KnownFace] = []
         for doc in docs:
             data = doc.to_dict()
-            embedding_raw = data.get("embedding")
-            if not isinstance(embedding_raw, list) or len(embedding_raw) != 128:
+            embeddings: list[np.ndarray] = []
+
+            base = self._valid_embedding(data.get("embedding"))
+            if base is not None:
+                embeddings.append(base)
+
+            templates_raw = data.get("templates")
+            if isinstance(templates_raw, dict):
+                for key in sorted(templates_raw):
+                    template = self._valid_embedding(templates_raw.get(key))
+                    if template is not None:
+                        embeddings.append(template)
+
+            if not embeddings:
                 continue
+
             faces.append(
                 KnownFace(
                     face_id=doc.id,
                     name=str(data.get("name") or "Unnamed"),
-                    embedding=np.asarray(embedding_raw, dtype=np.float64),
+                    embeddings=tuple(embeddings),
                     image_path=data.get("imagePath"),
                 )
             )
@@ -126,15 +148,66 @@ class FaceService:
         embeddings = face_recognition.face_encodings(
             image,
             known_face_locations=locations,
-            num_jitters=1,
+            num_jitters=3,
             model="small",
         )
         return locations, embeddings, width, height
 
+    @staticmethod
+    def _similarity(distance: float) -> float:
+        # face_recognition distances are not percentages. This maps the useful
+        # matching range to a stable 0..1 score without changing match logic.
+        if distance <= 0.0:
+            return 1.0
+        if distance >= 1.0:
+            return 0.0
+        return max(0.0, min(1.0, 1.0 - distance))
+
+    @staticmethod
+    def _flatten_known(
+        known: list[KnownFace],
+    ) -> tuple[list[np.ndarray], list[KnownFace]]:
+        vectors: list[np.ndarray] = []
+        owners: list[KnownFace] = []
+        for face in known:
+            for embedding in face.embeddings:
+                vectors.append(embedding)
+                owners.append(face)
+        return vectors, owners
+
+    def _maybe_learn_template(
+        self,
+        uid: str,
+        face: KnownFace,
+        embedding: np.ndarray,
+        best_distance: float,
+    ) -> None:
+        # Learn only from already-confident matches. This improves recognition
+        # across pose/lighting while limiting template drift.
+        if best_distance < settings.face_template_min_distance:
+            return
+        if len(face.embeddings) >= settings.max_templates_per_face:
+            return
+
+        ref = (
+            db().collection("users").document(uid)
+            .collection("faces").document(face.face_id)
+        )
+        template_index = len(face.embeddings)
+        ref.update(
+            {
+                f"templates.t{template_index}": [
+                    float(value) for value in embedding.tolist()
+                ],
+                "updatedAt": firestore.SERVER_TIMESTAMP,
+            }
+        )
+        self.invalidate(uid)
+
     def recognize(self, uid: str, raw: bytes) -> dict:
         locations, embeddings, width, height = self.encodings(raw)
         known = self._known_faces(uid)
-        known_vectors = [face.embedding for face in known]
+        known_vectors, owners = self._flatten_known(known)
 
         result_faces = []
         for index, (location, embedding) in enumerate(
@@ -164,15 +237,19 @@ class FaceService:
                 distance = float(distances[best_index])
 
                 if distance <= settings.face_match_tolerance:
-                    matched = known[best_index]
+                    matched = owners[best_index]
                     item.update(
                         matched=True,
                         faceId=matched.face_id,
                         name=matched.name,
                         distance=round(distance, 5),
-                        similarity=round(
-                            max(0.0, min(1.0, 1.0 - distance)), 5
-                        ),
+                        similarity=round(self._similarity(distance), 5),
+                    )
+                    self._maybe_learn_template(
+                        uid,
+                        matched,
+                        embedding,
+                        distance,
                     )
 
             result_faces.append(item)
@@ -228,26 +305,27 @@ class FaceService:
 
         embedding = embeddings[face_index]
         if existing:
+            known_vectors, owners = self._flatten_known(existing)
             distances = face_recognition.face_distance(
-                [face.embedding for face in existing],
+                known_vectors,
                 embedding,
             )
             best_index = int(np.argmin(distances))
             best_distance = float(distances[best_index])
             if best_distance <= settings.face_match_tolerance:
-                duplicate = existing[best_index]
-                raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail={
-                        "code": "FACE_ALREADY_ENROLLED",
-                        "message": (
-                            f"This face is already saved as "
-                            f"{duplicate.name}."
-                        ),
-                        "faceId": duplicate.face_id,
-                        "name": duplicate.name,
-                    },
+                duplicate = owners[best_index]
+                self._maybe_learn_template(
+                    uid,
+                    duplicate,
+                    embedding,
+                    best_distance,
                 )
+                return {
+                    "id": duplicate.face_id,
+                    "name": duplicate.name,
+                    "imagePath": duplicate.image_path,
+                    "alreadyKnown": True,
+                }
 
         doc_ref = (
             db().collection("users").document(uid)
@@ -263,6 +341,7 @@ class FaceService:
                 "embedding": [
                     float(v) for v in embedding.tolist()
                 ],
+                "templates": {},
                 "imagePath": image_path or None,
                 "sourceBox": {
                     "top": top,
@@ -280,6 +359,7 @@ class FaceService:
             "id": doc_ref.id,
             "name": clean_name,
             "imagePath": image_path,
+            "alreadyKnown": False,
         }
 
     def list_faces(self, uid: str) -> list[dict]:
