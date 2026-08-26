@@ -82,11 +82,42 @@ PY
 fi
 
 # Apply the approved Face Name symbol-only launcher icon after Flutter regenerates
-# the native Android scaffold. Android scales the square source per density.
+# the native Android scaffold. Strip embedded ICC/text metadata first because AAPT2
+# can reject otherwise-valid PNGs with unsupported ancillary color-profile chunks.
 ICON_SOURCE="assets/face_name_launcher.png"
 if [ -f "$ICON_SOURCE" ]; then
+  SANITIZED_ICON="$TMP_DIR/face_name_launcher_android.png"
+  python3 - "$ICON_SOURCE" "$SANITIZED_ICON" <<'PY'
+from pathlib import Path
+import struct
+import sys
+
+src = Path(sys.argv[1]).read_bytes()
+if src[:8] != b"\x89PNG\r\n\x1a\n":
+    raise SystemExit("Launcher asset is not a PNG")
+
+# Keep only chunks needed to decode/render the PNG plus transparency and physical
+# pixel information. This preserves the exact artwork while removing ICC/text
+# metadata that Android resource compilation does not need.
+keep = {b"IHDR", b"PLTE", b"IDAT", b"IEND", b"tRNS", b"pHYs"}
+out = bytearray(src[:8])
+pos = 8
+while pos + 12 <= len(src):
+    length = struct.unpack(">I", src[pos:pos + 4])[0]
+    end = pos + 12 + length
+    if end > len(src):
+        raise SystemExit("Malformed launcher PNG")
+    chunk_type = src[pos + 4:pos + 8]
+    if chunk_type in keep:
+        out.extend(src[pos:end])
+    pos = end
+    if chunk_type == b"IEND":
+        break
+Path(sys.argv[2]).write_bytes(out)
+PY
+
   for density in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
-    cp "$ICON_SOURCE" "android/app/src/main/res/mipmap-$density/ic_launcher.png"
+    cp "$SANITIZED_ICON" "android/app/src/main/res/mipmap-$density/ic_launcher.png"
   done
 fi
 
