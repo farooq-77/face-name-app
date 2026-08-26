@@ -92,4 +92,4 @@ fi
 
 flutter pub get
 
-echo "Flutter native Android/iOS scaffold generated."
+echo "Flutter native Android/iOS scaffold generated with Face Name branding."
