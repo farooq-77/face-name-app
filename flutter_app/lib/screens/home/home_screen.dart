@@ -142,7 +142,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                       const SizedBox(height: 6),
                       const Text(
-                        'Each box matches the numbered face below. Tap a face to highlight it before tagging.',
+                        'Each box matches the numbered face below. Tap an unknown face to name it.',
                       ),
                       const SizedBox(height: 12),
                       ClipRRect(
@@ -161,9 +161,16 @@ class _HomeScreenState extends State<HomeScreen> {
                               height: result.height,
                             ),
                             activeListIndex: activeFaceIndex,
-                            onFaceTap: (index) => setSheetState(
-                              () => activeFaceIndex = index,
-                            ),
+                            onFaceTap: (index) {
+                              final face = mutable[index];
+                              if (face.matched) {
+                                setSheetState(
+                                  () => activeFaceIndex = index,
+                                );
+                              } else {
+                                tagFace(index);
+                              }
+                            },
                           ),
                         ),
                       ),
