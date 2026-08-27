@@ -90,6 +90,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     final mutable = List<RecognizedFace>.from(result.faces);
+    int? activeFaceIndex;
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -99,6 +100,7 @@ class _HomeScreenState extends State<HomeScreen> {
           builder: (context, setSheetState) {
             Future<void> tagFace(int listIndex) async {
               final face = mutable[listIndex];
+              setSheetState(() => activeFaceIndex = listIndex);
               final name = await _askTag(sheetContext);
               if (name == null || name.trim().isEmpty) return;
 
@@ -110,6 +112,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 );
                 setSheetState(() {
                   mutable[listIndex] = face.tagged(saved.name, saved.id);
+                  activeFaceIndex = listIndex;
                 });
               } on ApiException catch (e) {
                 if (sheetContext.mounted) {
@@ -129,13 +132,37 @@ class _HomeScreenState extends State<HomeScreen> {
                   20 + MediaQuery.viewInsetsOf(context).bottom,
                 ),
                 child: SizedBox(
-                  height: MediaQuery.sizeOf(context).height * 0.72,
+                  height: MediaQuery.sizeOf(context).height * 0.84,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
                         '${mutable.length} face${mutable.length == 1 ? '' : 's'} detected',
                         style: Theme.of(context).textTheme.titleLarge,
+                      ),
+                      const SizedBox(height: 6),
+                      const Text(
+                        'Each box matches the numbered face below. Tap a face to highlight it before tagging.',
+                      ),
+                      const SizedBox(height: 12),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(14),
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: Theme.of(context)
+                                .colorScheme
+                                .surfaceContainerHighest,
+                          ),
+                          child: _FaceOverlayImage(
+                            file: file,
+                            result: RecognitionResponse(
+                              faces: mutable,
+                              width: result.width,
+                              height: result.height,
+                            ),
+                            activeListIndex: activeFaceIndex,
+                          ),
+                        ),
                       ),
                       const SizedBox(height: 12),
                       Expanded(
@@ -144,15 +171,29 @@ class _HomeScreenState extends State<HomeScreen> {
                           separatorBuilder: (_, __) => const Divider(),
                           itemBuilder: (_, index) {
                             final face = mutable[index];
+                            final active = activeFaceIndex == index;
                             return ListTile(
-                              contentPadding: EdgeInsets.zero,
+                              selected: active,
+                              selectedTileColor: Theme.of(context)
+                                  .colorScheme
+                                  .primaryContainer
+                                  .withValues(alpha: 0.35),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                              ),
+                              onTap: () => setSheetState(
+                                () => activeFaceIndex = index,
+                              ),
                               leading: CircleAvatar(
                                 child: Text('${face.index + 1}'),
                               ),
                               title: Text(
                                 face.matched
                                     ? (face.name ?? 'Matched face')
-                                    : 'Unknown face',
+                                    : 'Face ${face.index + 1} · Unknown',
                               ),
                               subtitle: face.matched
                                   ? Text(
@@ -311,6 +352,110 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _FaceOverlayImage extends StatelessWidget {
+  const _FaceOverlayImage({
+    required this.file,
+    required this.result,
+    required this.activeListIndex,
+  });
+
+  final File file;
+  final RecognitionResponse result;
+  final int? activeListIndex;
+
+  @override
+  Widget build(BuildContext context) {
+    if (result.width <= 0 || result.height <= 0) {
+      return Image.file(file, fit: BoxFit.contain);
+    }
+
+    return AspectRatio(
+      aspectRatio: result.width / result.height,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final scaleX = constraints.maxWidth / result.width;
+          final scaleY = constraints.maxHeight / result.height;
+
+          return Stack(
+            fit: StackFit.expand,
+            children: [
+              Image.file(file, fit: BoxFit.fill),
+              for (var listIndex = 0;
+                  listIndex < result.faces.length;
+                  listIndex++)
+                _faceBox(
+                  context,
+                  result.faces[listIndex],
+                  listIndex,
+                  scaleX,
+                  scaleY,
+                ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _faceBox(
+    BuildContext context,
+    RecognizedFace face,
+    int listIndex,
+    double scaleX,
+    double scaleY,
+  ) {
+    final box = face.box;
+    final left = box.left * scaleX;
+    final top = box.top * scaleY;
+    final width = (box.right - box.left) * scaleX;
+    final height = (box.bottom - box.top) * scaleY;
+    final active = activeListIndex == listIndex;
+    final scheme = Theme.of(context).colorScheme;
+    final borderColor = active ? scheme.tertiary : scheme.primary;
+    final label = face.matched
+        ? '${face.name ?? 'Matched'}${face.similarity == null ? '' : ' ${(face.similarity! * 100).toStringAsFixed(0)}%'}'
+        : 'Face ${face.index + 1}';
+
+    return Positioned(
+      left: left,
+      top: top,
+      width: width.clamp(1.0, double.infinity),
+      height: height.clamp(1.0, double.infinity),
+      child: IgnorePointer(
+        child: Container(
+          decoration: BoxDecoration(
+            border: Border.all(
+              color: borderColor,
+              width: active ? 4 : 3,
+            ),
+          ),
+          alignment: Alignment.topLeft,
+          child: Transform.translate(
+            offset: const Offset(-2, -26),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+              decoration: BoxDecoration(
+                color: borderColor,
+                borderRadius: BorderRadius.circular(5),
+              ),
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: scheme.onPrimary,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ),
         ),
       ),
     );
