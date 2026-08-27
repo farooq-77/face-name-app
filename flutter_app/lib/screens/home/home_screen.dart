@@ -161,6 +161,9 @@ class _HomeScreenState extends State<HomeScreen> {
                               height: result.height,
                             ),
                             activeListIndex: activeFaceIndex,
+                            onFaceTap: (index) => setSheetState(
+                              () => activeFaceIndex = index,
+                            ),
                           ),
                         ),
                       ),
@@ -363,11 +366,13 @@ class _FaceOverlayImage extends StatelessWidget {
     required this.file,
     required this.result,
     required this.activeListIndex,
+    required this.onFaceTap,
   });
 
   final File file;
   final RecognitionResponse result;
   final int? activeListIndex;
+  final ValueChanged<int> onFaceTap;
 
   @override
   Widget build(BuildContext context) {
@@ -427,7 +432,9 @@ class _FaceOverlayImage extends StatelessWidget {
       top: top,
       width: width.clamp(1.0, double.infinity),
       height: height.clamp(1.0, double.infinity),
-      child: IgnorePointer(
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => onFaceTap(listIndex),
         child: Container(
           decoration: BoxDecoration(
             border: Border.all(
