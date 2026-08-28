@@ -97,15 +97,11 @@ if [ -f "$ICON_SOURCE" ]; then
     exit 1
   fi
 
-  # Work from a temporary, tightly bounded copy only; never rewrite/crop the approved source.
   TRIMMED_ICON="$(mktemp --suffix=.png)"
   "${IMAGE_MAGICK[@]}" "$ICON_SOURCE" -auto-orient -fuzz 6% -trim +repage \
     -strip -define png:color-type=6 "$TRIMMED_ICON"
 
   while read -r density legacy_size foreground_size; do
-    # 78% legacy content leaves 11% padding per side. 66% adaptive content follows
-    # the Android adaptive-icon safe-zone guidance; trimming the redundant source
-    # margin makes the visible logo materially larger without risking mask clipping.
     legacy_inner=$(( legacy_size * 78 / 100 ))
     foreground_inner=$(( foreground_size * 66 / 100 ))
 
@@ -169,18 +165,27 @@ if 'android:roundIcon=' not in s:
 p.write_text(s)
 PY
 
-  # Fail the build immediately if any launcher resource is missing, malformed, or
-  # generated at the wrong Android density size.
+  # Validate with the dedicated identify binary. `convert identify ...` is parsed
+  # as an input image named "identify" on ImageMagick 6 runners.
+  if command -v magick >/dev/null 2>&1; then
+    identify_dims() { magick identify -format '%wx%h' "$1"; }
+  elif command -v identify >/dev/null 2>&1; then
+    identify_dims() { identify -format '%wx%h' "$1"; }
+  else
+    echo "ImageMagick identify is required to validate launcher icons." >&2
+    exit 1
+  fi
+
   while read -r density legacy_size foreground_size; do
     for name in ic_launcher.png ic_launcher_round.png; do
       path="android/app/src/main/res/mipmap-$density/$name"
       test -s "$path"
-      dims="$("${IMAGE_MAGICK[@]}" identify -format '%wx%h' "$path")"
+      dims="$(identify_dims "$path")"
       test "$dims" = "${legacy_size}x${legacy_size}"
     done
     path="android/app/src/main/res/mipmap-$density/ic_launcher_foreground.png"
     test -s "$path"
-    dims="$("${IMAGE_MAGICK[@]}" identify -format '%wx%h' "$path")"
+    dims="$(identify_dims "$path")"
     test "$dims" = "${foreground_size}x${foreground_size}"
   done <<'SIZES'
 mdpi 48 108
