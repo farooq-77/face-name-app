@@ -81,12 +81,12 @@ p.write_text(s)
 PY
 fi
 
-# Generate Android launcher resources from the approved Face Name source asset.
-# Legacy icons get a black square canvas with safe padding. Adaptive icons use
-# the same exact source as a centered foreground over a black background, so
-# Android launchers can crop to circle/squircle shapes without reverting to the
-# default Flutter mark or clipping the Face Name symbol.
+# Generate Android launcher resources from the approved full Face Name source asset.
+# Preserve the source artwork and only scale it proportionally into Android safe
+# zones. Use a very light gray canvas/background so the full logo remains visible
+# without the old black/yellow launcher treatment.
 ICON_SOURCE="assets/face_name_launcher.png"
+LAUNCHER_BG="#F2F2F2"
 if [ -f "$ICON_SOURCE" ]; then
   if command -v magick >/dev/null 2>&1; then
     IMAGE_MAGICK=(magick)
@@ -101,8 +101,8 @@ if [ -f "$ICON_SOURCE" ]; then
     legacy_inner=$(( legacy_size * 78 / 100 ))
     foreground_inner=$(( foreground_size * 66 / 100 ))
 
-    "${IMAGE_MAGICK[@]}" -size "${legacy_size}x${legacy_size}" xc:black \
-      \( "$ICON_SOURCE" -auto-orient -resize "${legacy_inner}x${legacy_inner}" \) \
+    "${IMAGE_MAGICK[@]}" -size "${legacy_size}x${legacy_size}" "xc:${LAUNCHER_BG}" \
+      \( "$ICON_SOURCE" -auto-orient -resize "${legacy_inner}x${legacy_inner}>" \) \
       -gravity center -composite -strip -define png:color-type=6 \
       "android/app/src/main/res/mipmap-$density/ic_launcher.png"
 
@@ -110,7 +110,7 @@ if [ -f "$ICON_SOURCE" ]; then
       "android/app/src/main/res/mipmap-$density/ic_launcher_round.png"
 
     "${IMAGE_MAGICK[@]}" -size "${foreground_size}x${foreground_size}" xc:none \
-      \( "$ICON_SOURCE" -auto-orient -resize "${foreground_inner}x${foreground_inner}" \) \
+      \( "$ICON_SOURCE" -auto-orient -resize "${foreground_inner}x${foreground_inner}>" \) \
       -gravity center -composite -strip -define png:color-type=6 \
       "android/app/src/main/res/mipmap-$density/ic_launcher_foreground.png"
   done <<'SIZES'
@@ -127,7 +127,7 @@ SIZES
   cat > android/app/src/main/res/values/face_name_launcher.xml <<'XML'
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="face_name_launcher_background">#000000</color>
+    <color name="face_name_launcher_background">#F2F2F2</color>
 </resources>
 XML
 
