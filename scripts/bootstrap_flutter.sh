@@ -82,9 +82,9 @@ PY
 fi
 
 # Generate Android launcher resources from the approved full Face Name source asset.
-# Preserve the source artwork and only scale it proportionally into Android safe
-# zones. Use a very light gray canvas/background so the full logo remains visible
-# without the old black/yellow launcher treatment.
+# Preserve the artwork itself. Remove only the source's redundant outer dark margin
+# before proportional scaling so FACE NAME / Farooq77 are larger and more readable,
+# while the complete logo still stays inside Android legacy/adaptive safe zones.
 ICON_SOURCE="assets/face_name_launcher.png"
 LAUNCHER_BG="#F2F2F2"
 if [ -f "$ICON_SOURCE" ]; then
@@ -97,12 +97,20 @@ if [ -f "$ICON_SOURCE" ]; then
     exit 1
   fi
 
+  # Work from a temporary, tightly bounded copy only; never rewrite/crop the approved source.
+  TRIMMED_ICON="$(mktemp --suffix=.png)"
+  "${IMAGE_MAGICK[@]}" "$ICON_SOURCE" -auto-orient -fuzz 6% -trim +repage \
+    -strip -define png:color-type=6 "$TRIMMED_ICON"
+
   while read -r density legacy_size foreground_size; do
+    # 78% legacy content leaves 11% padding per side. 66% adaptive content follows
+    # the Android adaptive-icon safe-zone guidance; trimming the redundant source
+    # margin makes the visible logo materially larger without risking mask clipping.
     legacy_inner=$(( legacy_size * 78 / 100 ))
     foreground_inner=$(( foreground_size * 66 / 100 ))
 
     "${IMAGE_MAGICK[@]}" -size "${legacy_size}x${legacy_size}" "xc:${LAUNCHER_BG}" \
-      \( "$ICON_SOURCE" -auto-orient -resize "${legacy_inner}x${legacy_inner}>" \) \
+      \( "$TRIMMED_ICON" -resize "${legacy_inner}x${legacy_inner}>" \) \
       -gravity center -composite -strip -define png:color-type=6 \
       "android/app/src/main/res/mipmap-$density/ic_launcher.png"
 
@@ -110,7 +118,7 @@ if [ -f "$ICON_SOURCE" ]; then
       "android/app/src/main/res/mipmap-$density/ic_launcher_round.png"
 
     "${IMAGE_MAGICK[@]}" -size "${foreground_size}x${foreground_size}" xc:none \
-      \( "$ICON_SOURCE" -auto-orient -resize "${foreground_inner}x${foreground_inner}>" \) \
+      \( "$TRIMMED_ICON" -resize "${foreground_inner}x${foreground_inner}>" \) \
       -gravity center -composite -strip -define png:color-type=6 \
       "android/app/src/main/res/mipmap-$density/ic_launcher_foreground.png"
   done <<'SIZES'
@@ -120,6 +128,8 @@ xhdpi 96 216
 xxhdpi 144 324
 xxxhdpi 192 432
 SIZES
+
+  rm -f "$TRIMMED_ICON"
 
   mkdir -p android/app/src/main/res/mipmap-anydpi-v26
   mkdir -p android/app/src/main/res/values
@@ -158,6 +168,30 @@ if 'android:roundIcon=' not in s:
     )
 p.write_text(s)
 PY
+
+  # Fail the build immediately if any launcher resource is missing, malformed, or
+  # generated at the wrong Android density size.
+  while read -r density legacy_size foreground_size; do
+    for name in ic_launcher.png ic_launcher_round.png; do
+      path="android/app/src/main/res/mipmap-$density/$name"
+      test -s "$path"
+      dims="$("${IMAGE_MAGICK[@]}" identify -format '%wx%h' "$path")"
+      test "$dims" = "${legacy_size}x${legacy_size}"
+    done
+    path="android/app/src/main/res/mipmap-$density/ic_launcher_foreground.png"
+    test -s "$path"
+    dims="$("${IMAGE_MAGICK[@]}" identify -format '%wx%h' "$path")"
+    test "$dims" = "${foreground_size}x${foreground_size}"
+  done <<'SIZES'
+mdpi 48 108
+hdpi 72 162
+xhdpi 96 216
+xxhdpi 144 324
+xxxhdpi 192 432
+SIZES
+  grep -q '#F2F2F2' android/app/src/main/res/values/face_name_launcher.xml
+  grep -q '@mipmap/ic_launcher_foreground' android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml
+  grep -q '@mipmap/ic_launcher_foreground' android/app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml
 fi
 
 flutter pub get
