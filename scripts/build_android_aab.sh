@@ -31,7 +31,7 @@ cat > android/key.properties <<EOF
 storePassword=$PLAY_UPLOAD_STORE_PASSWORD
 keyPassword=$PLAY_UPLOAD_KEY_PASSWORD
 keyAlias=$PLAY_UPLOAD_KEY_ALIAS
-storeFile=upload-keystore.jks
+storeFile=../upload-keystore.jks
 EOF
 
 python3 - <<'PY'
