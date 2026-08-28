@@ -81,9 +81,11 @@ p.write_text(s)
 PY
 fi
 
-# Apply the approved Face Name symbol-only launcher icon after Flutter regenerates
-# the native Android scaffold. Android expects density-specific PNGs; fully
-# re-encoding the source also removes ancillary/profile data that AAPT2 may reject.
+# Generate Android launcher resources from the approved Face Name source asset.
+# Legacy icons get a black square canvas with safe padding. Adaptive icons use
+# the same exact source as a centered foreground over a black background, so
+# Android launchers can crop to circle/squircle shapes without reverting to the
+# default Flutter mark or clipping the Face Name symbol.
 ICON_SOURCE="assets/face_name_launcher.png"
 if [ -f "$ICON_SOURCE" ]; then
   if command -v magick >/dev/null 2>&1; then
@@ -95,20 +97,67 @@ if [ -f "$ICON_SOURCE" ]; then
     exit 1
   fi
 
-  while read -r density size; do
-    "${IMAGE_MAGICK[@]}" "$ICON_SOURCE" \
-      -auto-orient \
-      -resize "${size}x${size}!" \
-      -strip \
-      -define png:color-type=6 \
+  while read -r density legacy_size foreground_size; do
+    legacy_inner=$(( legacy_size * 78 / 100 ))
+    foreground_inner=$(( foreground_size * 66 / 100 ))
+
+    "${IMAGE_MAGICK[@]}" -size "${legacy_size}x${legacy_size}" xc:black \
+      \( "$ICON_SOURCE" -auto-orient -resize "${legacy_inner}x${legacy_inner}" \) \
+      -gravity center -composite -strip -define png:color-type=6 \
       "android/app/src/main/res/mipmap-$density/ic_launcher.png"
+
+    cp "android/app/src/main/res/mipmap-$density/ic_launcher.png" \
+      "android/app/src/main/res/mipmap-$density/ic_launcher_round.png"
+
+    "${IMAGE_MAGICK[@]}" -size "${foreground_size}x${foreground_size}" xc:none \
+      \( "$ICON_SOURCE" -auto-orient -resize "${foreground_inner}x${foreground_inner}" \) \
+      -gravity center -composite -strip -define png:color-type=6 \
+      "android/app/src/main/res/mipmap-$density/ic_launcher_foreground.png"
   done <<'SIZES'
-mdpi 48
-hdpi 72
-xhdpi 96
-xxhdpi 144
-xxxhdpi 192
+mdpi 48 108
+hdpi 72 162
+xhdpi 96 216
+xxhdpi 144 324
+xxxhdpi 192 432
 SIZES
+
+  mkdir -p android/app/src/main/res/mipmap-anydpi-v26
+  mkdir -p android/app/src/main/res/values
+
+  cat > android/app/src/main/res/values/face_name_launcher.xml <<'XML'
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="face_name_launcher_background">#000000</color>
+</resources>
+XML
+
+  cat > android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml <<'XML'
+<?xml version="1.0" encoding="utf-8"?>
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/face_name_launcher_background" />
+    <foreground android:drawable="@mipmap/ic_launcher_foreground" />
+</adaptive-icon>
+XML
+
+  cat > android/app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml <<'XML'
+<?xml version="1.0" encoding="utf-8"?>
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/face_name_launcher_background" />
+    <foreground android:drawable="@mipmap/ic_launcher_foreground" />
+</adaptive-icon>
+XML
+
+  python3 - <<'PY'
+from pathlib import Path
+p = Path("android/app/src/main/AndroidManifest.xml")
+s = p.read_text()
+if 'android:roundIcon=' not in s:
+    s = s.replace(
+        'android:icon="@mipmap/ic_launcher"',
+        'android:icon="@mipmap/ic_launcher"\n        android:roundIcon="@mipmap/ic_launcher_round"',
+    )
+p.write_text(s)
+PY
 fi
 
 flutter pub get
