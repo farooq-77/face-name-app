@@ -1,0 +1,83 @@
+name: Android AAB
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "scripts/build_android_aab.sh"
+      - ".github/workflows/android-aab.yml"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install launcher icon tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y imagemagick
+          python3 -m pip install --disable-pip-version-check pillow
+
+      - name: Sanitize launcher icon source
+        working-directory: flutter_app
+        run: |
+          python3 - <<'PY'
+          from PIL import Image, ImageFile
+          ImageFile.LOAD_TRUNCATED_IMAGES = True
+          path = "assets/face_name_launcher.png"
+          with Image.open(path) as image:
+              image.load()
+              image.convert("RGBA").save(path, format="PNG", optimize=True)
+          PY
+
+      - name: Bootstrap Flutter native project
+        run: bash scripts/bootstrap_flutter.sh
+
+      - name: Inject google-services.json
+        env:
+          GOOGLE_SERVICES_JSON_B64: ${{ secrets.GOOGLE_SERVICES_JSON_B64 }}
+        run: |
+          test -n "$GOOGLE_SERVICES_JSON_B64"
+          echo "$GOOGLE_SERVICES_JSON_B64" | base64 --decode > flutter_app/android/app/google-services.json
+
+      - name: Inject Play upload keystore
+        env:
+          PLAY_UPLOAD_KEYSTORE_B64: ${{ secrets.PLAY_UPLOAD_KEYSTORE_B64 }}
+        run: |
+          test -n "$PLAY_UPLOAD_KEYSTORE_B64"
+          echo "$PLAY_UPLOAD_KEYSTORE_B64" | base64 --decode > flutter_app/android/upload-keystore.jks
+
+      - name: Analyze
+        working-directory: flutter_app
+        run: flutter analyze
+
+      - name: Test
+        working-directory: flutter_app
+        run: flutter test
+
+      - name: Build signed release AAB
+        env:
+          FACE_NAME_API_BASE_URL: ${{ secrets.FACE_NAME_API_BASE_URL }}
+          FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY }}
+          FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+          FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.FIREBASE_MESSAGING_SENDER_ID }}
+          FIREBASE_ANDROID_APP_ID: ${{ secrets.FIREBASE_ANDROID_APP_ID }}
+          GOOGLE_SERVER_CLIENT_ID: ${{ secrets.GOOGLE_SERVER_CLIENT_ID }}
+          PLAY_UPLOAD_KEY_ALIAS: ${{ secrets.PLAY_UPLOAD_KEY_ALIAS }}
+          PLAY_UPLOAD_KEY_PASSWORD: ${{ secrets.PLAY_UPLOAD_KEY_PASSWORD }}
+          PLAY_UPLOAD_STORE_PASSWORD: ${{ secrets.PLAY_UPLOAD_STORE_PASSWORD }}
+        run: bash scripts/build_android_aab.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: face-name-release-aab
+          path: flutter_app/build/app/outputs/bundle/release/app-release.aab
+          if-no-files-found: error
