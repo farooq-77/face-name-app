@@ -6,6 +6,8 @@ on:
     branches: [main]
     paths:
       - "scripts/build_android_aab.sh"
+      - "scripts/bootstrap_flutter.sh"
+      - "flutter_app/pubspec.yaml"
       - ".github/workflows/android-aab.yml"
 
 jobs:
@@ -40,6 +42,13 @@ jobs:
 
       - name: Bootstrap Flutter native project
         run: bash scripts/bootstrap_flutter.sh
+
+      - name: Verify Play package identity
+        working-directory: flutter_app
+        run: |
+          grep -q 'namespace = "com.farooq77.facename"' android/app/build.gradle.kts
+          grep -q 'applicationId = "com.farooq77.facename"' android/app/build.gradle.kts
+          grep -q '^package com.farooq77.facename$' android/app/src/main/kotlin/com/farooq77/facename/MainActivity.kt
 
       - name: Inject google-services.json
         env:
