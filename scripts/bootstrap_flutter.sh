@@ -27,7 +27,9 @@ cp "$TMP_DIR/pubspec.yaml" ./pubspec.yaml
 cp "$TMP_DIR/analysis_options.yaml" ./analysis_options.yaml
 if [ -d "$TMP_DIR/test" ]; then cp -R "$TMP_DIR/test" ./test; fi
 
-# Keep the existing project/package identity, but use the product name users see.
+# Keep the Dart project name unchanged, but align the Android application identity
+# with the existing Google Play / Firebase app registration.
+ANDROID_PACKAGE="com.farooq77.facename"
 ANDROID_MANIFEST="android/app/src/main/AndroidManifest.xml"
 if [ -f "$ANDROID_MANIFEST" ]; then
   python3 - <<'PY'
@@ -44,10 +46,26 @@ if [ -f android/app/build.gradle.kts ]; then
 from pathlib import Path
 p = Path("android/app/build.gradle.kts")
 s = p.read_text()
+s = s.replace('namespace = "com.farooq77.face_name_app"', 'namespace = "com.farooq77.facename"')
+s = s.replace('applicationId = "com.farooq77.face_name_app"', 'applicationId = "com.farooq77.facename"')
 s = s.replace("minSdk = flutter.minSdkVersion", "minSdk = 24")
 p.write_text(s)
 PY
 fi
+
+OLD_MAIN="android/app/src/main/kotlin/com/farooq77/face_name_app/MainActivity.kt"
+NEW_MAIN_DIR="android/app/src/main/kotlin/com/farooq77/facename"
+NEW_MAIN="$NEW_MAIN_DIR/MainActivity.kt"
+if [ -f "$OLD_MAIN" ]; then
+  mkdir -p "$NEW_MAIN_DIR"
+  sed 's/^package com\.farooq77\.face_name_app$/package com.farooq77.facename/' "$OLD_MAIN" > "$NEW_MAIN"
+  rm -f "$OLD_MAIN"
+  rmdir --ignore-fail-on-non-empty android/app/src/main/kotlin/com/farooq77/face_name_app 2>/dev/null || true
+fi
+
+grep -q 'namespace = "com.farooq77.facename"' android/app/build.gradle.kts
+grep -q 'applicationId = "com.farooq77.facename"' android/app/build.gradle.kts
+grep -q '^package com.farooq77.facename$' "$NEW_MAIN"
 
 if [ -f ios/Podfile ]; then
   python3 - <<'PY'
